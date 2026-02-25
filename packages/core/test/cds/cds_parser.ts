@@ -264,6 +264,18 @@ define view zhvamfoocust as select from zhvam_cust
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
+  it("define root abstract entity with association", () => {
+    const cds = `
+    define root abstract entity I_PARAM_SHARE_DRAFT
+    {
+      key DummyKey : abap.char(1);
+      Users  : association [1..*] to I_PARAM_SHARE_DRAFT_Content on 1 = 1;
+    }`;
+    const file = new MemoryFile("foobar.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
   it("multi line comment", () => {
     const cds = `
     /*+[hideWarning] { "IDS" : [ "CARDINALITY_CHECK" ]  }       UserID is not key of sdfds*/
@@ -1450,95 +1462,614 @@ define view Test as select from tab1 as T1
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
-  it("hierarchy without siblings order by clause", () => {
-    const cds = `define hierarchy I_MyHierarchy_NoSiblings
-  as parent child hierarchy (
-    source I_OrgUnit
-    child to parent association _Parent
-    start where IsRoot = 'X'
-    multiple parents allowed
-  )
-{
-  key NodeID,
-  ParentNodeID,
-  HierarchyLevel
+  it("two annotations concatenated on same line without space", () => {
+    const cds = `@AbapCatalog.preserveKey:true@AbapCatalog.compiler.compareFilter:true
+define view ZTestView as select from ztable {
+  key field1
+}`;
+    const file = new MemoryFile("ztestview.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("decimal literal in cast", () => {
+    const cds = `define view Test as select from tab {
+  cast( 0.00 as abap.dec(15,2) ) as Amount
 }`;
     const file = new MemoryFile("test.ddls.asddls", cds);
     const parsed = new CDSParser().parse(file);
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
-  it("hierarchy without start where clause", () => {
-    const cds = `define hierarchy I_MyHierarchy_NoStart
-  as parent child hierarchy (
-    source I_OrgUnit
-    child to parent association _Parent
-    siblings order by OrgUnitName ascending
-    multiple parents allowed
-  )
-{
-  key NodeID,
-  ParentNodeID,
-  HierarchyLevel
+  it("parenthesized arithmetic as operand in CASE then", () => {
+    const cds = `define view Test as select from tab {
+  case when flag = 'X'
+    then division(A,B,3) + (C - ((division(D,E,3)) * F))
+    else 0
+  end as Result
 }`;
     const file = new MemoryFile("test.ddls.asddls", cds);
     const parsed = new CDSParser().parse(file);
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
-  it("hierarchy with cycles breakup clause", () => {
-    const cds = `define hierarchy I_MyHierarchy_Cycles
-  as parent child hierarchy (
-    source I_OrgUnit
-    child to parent association _Parent
-    start where IsRoot = 'X'
-    siblings order by OrgUnitName ascending
+  it("deeply nested parenthesized arithmetic (8 levels)", () => {
+    const cds = `define view Test as select from tab {
+  (((((((( A + B )))))))) as DeepNested
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("LEFT OUTER TO MANY join", () => {
+    const cds = `define view Test as select from T1
+    left outer to many join T2 as t2 on t2.id = T1.id
+{
+  key T1.field1
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("annotation with null value", () => {
+    const cds = `define view Test as select from tab {
+  key f1,
+      @ObjectModel.foreignKey.association: null
+  key f2
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("cast with parenthesized case expression", () => {
+    const cds = `define view Test as select from tab {
+  cast((
+    case when A = 0 then B else C end
+  ) as my_type) as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("cast with parenthesized function expression", () => {
+    const cds = `define view Test as select from tab {
+  cast((concat(concat(a, b), c)) as my_type) as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("path filter on association field in cast", () => {
+    const cds = `define view Test as select from tab
+  association [0..*] to I_Text as _Text on $projection.ID = _Text.ID
+{
+  cast(_Text[1: Language = $session.system_language].TextDesc as my_type) as TextDesc
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("chained path filters with multi-line condition", () => {
+    const cds = `define view Test as select from tab {
+  WBSElement._ProfitCenter[1: ValidityEndDate >= $session.system_date
+    and ValidityStartDate <= $session.system_date ]._Text[1: Language = $session.system_language].ProfitCenterName as ProfitCenterName
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE with arithmetic expression (-1)*field in THEN", () => {
+    const cds = `define view Test as select from tab {
+  case when Status = 'X' then (-1)*Amount
+       else Amount
+  end as SignedAmount
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("fltp_to_dec function with AS type argument", () => {
+    const cds = `define view Test as select from tab {
+  fltp_to_dec( Quantity as abap.dec(13,3) ) as Quantity
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("annotation with #(string) value", () => {
+    const cds = `@AccessControl.personalData.blocking: #('TRANSACTIONAL_DATA')
+define view Test as select from tab { key Field }`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("path filter without integer prefix (condition only)", () => {
+    const cds = `define view Test as select from tab {
+  _SetHeader._SetHeaderText[ Language = $session.system_language ].SetDescription as ActivityTypeGroupName
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("path filter with join type redirect [inner]", () => {
+    const cds = `define view Test as select from tab {
+  _PTRSmallBusiness[inner].Supplier
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("parameterized association in CASE WHEN condition", () => {
+    const cds = `define view Test as select from tab {
+  case
+    when _Assoc( P_Currency:$parameters.P_Currency ).Amount = 0
+    then 0
+    else 1
+  end as Val
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("aggregate with arithmetic operator as element (sum*(-1))", () => {
+    const cds = `define view Test as select from tab {
+  sum(Amount)*(-1) as NegAmount,
+  cast(sum(TaxAmount)*(-1) as mytype) as NegTaxAmount
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("annotation with negative number value", () => {
+    const cds = `@Consumption.defaultValue: -30
+define view Test as select from tab { Field }`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("string with em-dash (U+2013) in annotation label", () => {
+    const cds = "@EndUserText.label: 'Billing Item \u2013 Cube'\ndefine view Test as select from tab { Field }";
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE THEN with aggregate and arithmetic (sum * -1)", () => {
+    const cds = `define view Test as select from tab {
+  case Field
+    when 'L' then sum(Amount)
+    when 'S' then sum(Amount) * -1
+    else sum(Amount)
+  end as SignedAmount
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("path filter with integer cardinality and join type [1:left outer]", () => {
+    const cds = `define view Test as select from tab {
+  cast(dd07t[1:left outer].ddtext as mytype) as TextName
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("datasource alias named 'virtual' does not conflict with VIRTUAL keyword", () => {
+    const cds = `define view Test as select from P_Source as virtual
+{
+  key virtual.UUID,
+  virtual.Material,
+  virtual.Plant
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("enum fixed value with dotted string literal (#enum.'value')", () => {
+    const cds = `define view Test as select from src { key src.Field }
+where active = #icl_active.'A'`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE THEN value with cast followed by arithmetic operator (cast(x) * -1)", () => {
+    const cds = `define view Test as select from src {
+  case when src.Dir = 'SELL'
+       then cast( case when src.D < src.D2 then 1 else 0 end as mytype ) * -1
+       else cast( case when src.D < src.D2 then 1 else 0 end as mytype )
+  end as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("cast with arithmetic expression inside (cast(a * b as type))", () => {
+    const cds = `define view Test as select from src {
+  cast( src.A * src.B as mytype ) as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("cast with function * constant inside (cast(division() * 100 as type))", () => {
+    const cds = `define view Test as select from src {
+  cast(division(src.A, src.B, 3) * 100 as mytype) as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("condition comparison with parenthesized function call on right side (field >= (function()))", () => {
+    const cds = `define view Test as select from src {
+  case when src.Qty >= (division(src.A, 100, 3))
+       then 1 else 0 end as Result
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("define view with column alias list", () => {
+    const cds = `define view I_Test(
+    SourceDocument,
+    SourceDocumentItem,
+    ConditionType
+  )
+  as select from SomeTable
+{
+  key cast(PurchasingDocument as awref) as SourceDocument,
+  key field2 as SourceDocumentItem,
+      field3 as ConditionType
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("hierarchy with parameterized source and orphans ignore clause", () => {
+    const cds = `define hierarchy I_Test
+  with parameters P_Key: kokrs, P_Group: setnamenew
+  as parent child hierarchy(
+    source I_Source(P_Key: $parameters.P_Key, P_Group: $parameters.P_Group)
+    child to parent association _Child
+    start where SetClass = '0101' and SetSubClass = $parameters.P_Key
+    siblings order by SetClass, SetSubClass
+    multiple parents allowed
+    orphans ignore
     cycles breakup
   )
 {
-  key NodeID,
-  ParentNodeID,
-  HierarchyLevel
+  key SetClass,
+  key SetSubClass,
+      ChildSetClass
 }`;
     const file = new MemoryFile("test.ddls.asddls", cds);
     const parsed = new CDSParser().parse(file);
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
-  it("hierarchy with siblings order by multiple fields", () => {
-    const cds = `define hierarchy I_MyHierarchy_MultiSort
-  as parent child hierarchy (
-    source I_OrgUnit
+  it("hierarchy field list with $node pseudo-field path", () => {
+    const cds = `define hierarchy I_Test
+  as parent child hierarchy(
+    source I_Source
     child to parent association _Parent
-    start where IsRoot = 'X'
-    siblings order by OrgUnitName ascending, OrgUnitID descending
+  )
+{
+  key ID,
+  $node.node_id         as NodeID,
+  $node.parent_id       as ParentID,
+  $node.hierarchy_level as Level
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("WHERE clause with NOT followed by parenthesized condition group", () => {
+    const cds = `define view Test as select from tab { key Field }
+where Status = 'C'
+     or not(
+        (
+          Date >= $session.system_date
+        )
+        or(
+          Date = '00000000'
+        )
+      )`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("association with WITH DEFAULT FILTER clause", () => {
+    const cds = `define view Test as select from tab as _T
+association [0..1] to I_Text as _Text on $projection.ID = _Text.ID
+                                     with default filter _Text.Language = $session.system_language
+{ key _T.field, _Text }`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("GROUP BY with parameterized association path", () => {
+    const cds = `define view Test
+  with parameters P_Key: sydate, P_Type: mytype
+  as select from src( P_Key: :P_Key )
+{
+  key Field1,
+  sum(Amount) as Amount
+}
+group by
+  Field1,
+  _Assoc( P_Key: :P_Key, P_Type: :P_Type ).ReportingPeriod,
+  _Assoc( P_Key: :P_Key, P_Type: :P_Type ).ReportingYear`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("association path filter with join-type and WHERE condition", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  _Descriptions[ 1: left outer where ( Language = $session.system_language ) ].Name as Name
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("function argument as parenthesized expression", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  concat(( concat_with_space(A, B, 2) ), 'suffix') as Combined
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE THEN with unary minus applied to parenthesized expression", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  case
+    when DocType = 'G'
+    then -(TaxAmount)
+  end as NegatedField
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("$extension.* wildcard field in field list", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  Field2,
+  $extension.*
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("hierarchy SIBLINGS ORDER BY with qualified source-prefixed field name", () => {
+    const cds = `define hierarchy Test
+  with parameters P_Usage : mytype, P_Header : mytype
+  as parent child hierarchy(
+    source Src
+    child to parent association _Tree
+    start where
+          Src.UsageField = :P_Usage
+      and Src.HeaderField = :P_Header
+    siblings order by
+      Src.SortField
     multiple parents allowed
   )
 {
-  key NodeID,
-  ParentNodeID,
-  HierarchyLevel
+  key $node.hierarchy_rank as HierarchyRank
 }`;
     const file = new MemoryFile("test.ddls.asddls", cds);
     const parsed = new CDSParser().parse(file);
     expect(parsed).to.be.instanceof(ExpressionNode);
   });
 
-  it("hierarchy with with parameters clause", () => {
-    const cds = `define hierarchy I_MyHierarchy_Params
-  with parameters
-    p_effective_date : abap.dats,
-    p_language       : abap.lang
-  as parent child hierarchy (
-    source I_OrgUnit
+  it("identifier directly preceding string literal without space (e.g. else'')", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  case when Field1 is not null then
+    case when Field2 > 0 then 'X' else'' end
+  else ''
+  end as MyField
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("FROM with parenthesized join chain as primary source", () => {
+    const cds = `define view Test
+  as select from(
+    SrcA as a
+    cross join SrcB as b
+  )
+  left outer to one join SrcC as c on c.id = a.id
+{
+  key a.Field1
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("inner one to many join cardinality", () => {
+    const cds = `define view Test as select from SrcA
+  inner one to many join SrcB on SrcA.id = SrcB.id
+{
+  key SrcA.Field1
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("parenthesized join sub-expression as join target", () => {
+    const cds = `define view Test
+  as select from Src left outer join (SubA as s join SubB b on s.id = b.id and s.type = b.type)
+    on Src.id = s.id
+{
+  key Src.Field1
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("decimal numbers in arithmetic expressions", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  cast(FieldA as abap.fltp) * 100.00 / cast(FieldB as abap.fltp) as Percentage
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE with parenthesized field as case key", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  case (AllocationSetType)
+    when '3' then ''
+    when '4' then ''
+    else SomeField
+  end as MyField
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("left outer many to exact one join cardinality", () => {
+    const cds = `define view Test as select from Src
+    left outer many to exact one join Other on Src.ID = Other.ID
+{
+  key Src.Field1
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("CASE with arithmetic expression as case key", () => {
+    const cds = `define view Test as select from Src {
+  key Field1,
+  case length(FieldA) * 10 + length(FieldB)
+    when 44 then concat(FieldA, FieldB)
+    when 43 then concat_with_space(FieldA, FieldB, 1)
+  end as ComputedField
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("hierarchy with DIRECTORY clause", () => {
+    const cds = `define hierarchy TestHier
+  with parameters P_UUID : some_uuid
+  as parent child hierarchy(
+    source SrcView
     child to parent association _Parent
-    start where IsRoot = 'X'
-    siblings order by OrgUnitName ascending
+    directory _Assoc filter by
+      UUID = $parameters.P_UUID
+    siblings order by
+      OrgID
+    orphans root
+  )
+{
+  key UUID,
+  OrgID,
+  $node.node_id as HierarchyNode
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("tab-indented CDS fields", () => {
+    // Tabs must be treated as whitespace by the lexer (not included in token strings)
+    const cds = "define root view entity I_TabTest\n\tprovider contract transactional_interface\n\tas projection on I_Src as Doc\n{\t\n\tkey UUID,\n\tField1,\n\t_Child: redirected to composition child I_ChildTP\n}";
+    const file = new MemoryFile("foobar.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("parameters select with negative integer values", () => {
+    const cds = `
+define view I_PlndView
+  as select from I_PlndSource( P_StartDate: -11, P_EndDate: 6 ) as src
+{
+  key src.Field
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("hierarchy with nodetype and cache force clauses", () => {
+    const cds = `
+define hierarchy I_TestHierarchy
+  with parameters P_Root : j_objnr
+  as parent child hierarchy(
+    source I_HierarchySrc
+    child to parent association _Parent
+    start where
+      NodeID = $parameters.P_Root
+    siblings order by
+      NodeID
+    nodetype HierarchyNodeType
+    multiple parents allowed
+    cache force
   )
 {
   key NodeID,
-  ParentNodeID,
-  HierarchyLevel
+  ParentID,
+  NodeType
+}`;
+    const file = new MemoryFile("test.ddls.asddls", cds);
+    const parsed = new CDSParser().parse(file);
+    expect(parsed).to.be.instanceof(ExpressionNode);
+  });
+
+  it("parameterized association path traversal in field list", () => {
+    const cds = `
+define view I_Test
+  with parameters P_Key : sydate
+  as select from I_Src as formula
+{
+  key formula.UUID,
+      formula._Assoc( P_KeyDate : $parameters.P_Key ).SpecID as SpecID,
+      formula._Stream( P_KeyDate : $parameters.P_Key )[ Scope = $parameters.P_Key ].StreamQty
 }`;
     const file = new MemoryFile("test.ddls.asddls", cds);
     const parsed = new CDSParser().parse(file);

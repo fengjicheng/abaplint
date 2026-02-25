@@ -124,10 +124,12 @@ export class CDSLexer {
 
       switch (next) {
         case "'":
+          build = result.add(build, row, col, mode);
           mode = Mode.String;
           build += next;
           break;
         case " ":
+        case "\t":
           build = result.add(build, row, col, mode);
           break;
         case "\n":
@@ -154,6 +156,11 @@ export class CDSLexer {
         case "/":
           build = result.add(build, row, col, mode);
           result.add(next, row, col, mode);
+          break;
+        case "@":
+          // @ starts a new annotation; flush current token and start building with @
+          build = result.add(build, row, col, mode);
+          build = "@";
           break;
         default:
           build += next;

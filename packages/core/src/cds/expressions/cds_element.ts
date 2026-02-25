@@ -1,5 +1,5 @@
 import {CDSAggregate, CDSAnnotation, CDSArithParen, CDSArithmetics, CDSCase, CDSFunction, CDSInteger, CDSName, CDSPrefixedName, CDSString, CDSType} from ".";
-import {Expression, optPrio, seq, alt, starPrio, altPrio} from "../../abap/2_statements/combi";
+import {Expression, optPrio, opt, seq, alt, starPrio, altPrio} from "../../abap/2_statements/combi";
 import {IStatementRunnable} from "../../abap/2_statements/statement_runnable";
 import {CDSAs} from "./cds_as";
 import {CDSCast} from "./cds_cast";
@@ -9,11 +9,15 @@ export class CDSElement extends Expression {
     const redirected = seq(": REDIRECTED TO", optPrio(altPrio("PARENT", "COMPOSITION CHILD")), CDSName);
     const colonThing = seq(":", alt(CDSName, CDSType, "LOCALIZED"));
 
+    // $extension.* — extension field wildcard
+    const extensionWildcard = seq("$extension", ".", "*");
+
     return seq(starPrio(CDSAnnotation),
-               optPrio(altPrio("KEY", "VIRTUAL")),
-               altPrio(CDSAggregate,
-                       CDSString,
+               opt(altPrio("KEY", "VIRTUAL")),
+               altPrio(extensionWildcard,
                        CDSArithmetics,
+                       CDSAggregate,
+                       CDSString,
                        CDSArithParen,
                        CDSFunction,
                        CDSCast,
