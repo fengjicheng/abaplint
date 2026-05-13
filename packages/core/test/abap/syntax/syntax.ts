@@ -9785,6 +9785,31 @@ ENDCLASS.`;
     expect(issues[0].getMessage()).to.contain("already declared");
   });
 
+  it("Method redefinition visibility cannot be changed", () => {
+    const abap = `CLASS sup DEFINITION.
+  PROTECTED SECTION.
+    METHODS bar.
+ENDCLASS.
+
+CLASS sup IMPLEMENTATION.
+  METHOD bar.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS lcl_test DEFINITION INHERITING FROM sup.
+  PUBLIC SECTION.
+    METHODS bar REDEFINITION.
+ENDCLASS.
+
+CLASS lcl_test IMPLEMENTATION.
+  METHOD bar.
+  ENDMETHOD.
+ENDCLASS.`;
+    const issues = runProgram(abap);
+    expect(issues.length).to.equals(1);
+    expect(issues[0].getMessage()).to.contain("visibility cannot be changed");
+  });
+
   it("ok, REDUCE, INIT 2nd", () => {
     const abap = `
 TYPES string_table TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
@@ -12591,6 +12616,35 @@ ENDCLASS.
 
 CLASS lcl IMPLEMENTATION.
 ENDCLASS.`;
+    const issues = runProgram(abap);
+    expect(issues[0]?.getMessage()).to.include("already defined");
+  });
+
+  it("identical EVENTS name in interface", () => {
+    const abap = `
+INTERFACE zif_foobar PUBLIC.
+  EVENTS button_click
+    EXPORTING
+      VALUE(es_col_id) TYPE lvc_s_col OPTIONAL
+      VALUE(es_row_no) TYPE lvc_s_roid OPTIONAL.
+  EVENTS button_click
+    EXPORTING
+      VALUE(es_col_id) TYPE lvc_s_col OPTIONAL
+      VALUE(es_row_no) TYPE lvc_s_roid OPTIONAL.
+ENDINTERFACE.`;
+    const issues = runInterface(abap);
+    expect(issues[0]?.getMessage()).to.include("already defined");
+  });
+
+  it("identical method parameter name in interface", () => {
+    const abap = `
+INTERFACE lif.
+  METHODS get_header_field
+    IMPORTING
+      VALUE(rv_value) TYPE string
+    RETURNING
+      VALUE(rv_value) TYPE string.
+ENDINTERFACE.`;
     const issues = runProgram(abap);
     expect(issues[0]?.getMessage()).to.include("already defined");
   });
