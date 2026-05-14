@@ -12122,6 +12122,17 @@ _foo.`;
     expect(issues[0]?.getMessage()).to.equal(undefined);
   });
 
+  it("Macro, sy-repid, another", () => {
+    const abap = `
+DEFINE _foo.
+WRITE / sy-repid(1).
+END-OF-DEFINITION.
+
+_foo.`;
+    const issues = runProgram(abap);
+    expect(issues[0]?.getMessage()).to.equal(undefined);
+  });
+
   it("Move, not compatible", () => {
     const abap = `
 TYPES: BEGIN OF ty_branch,
@@ -13032,6 +13043,55 @@ CLASS lcl IMPLEMENTATION.
 ENDCLASS.`;
     const issues = runProgram(abap);
     expect(issues[0]?.getMessage()).to.contain("not compatible");
+  });
+
+  it("Method string into char", () => {
+    const abap = `
+CLASS lcl DEFINITION.
+  PUBLIC SECTION.
+    TYPES ty TYPE c LENGTH 4.
+    METHODS update IMPORTING foo TYPE ty.
+ENDCLASS.
+CLASS lcl IMPLEMENTATION.
+  METHOD update.
+    DATA str TYPE string.
+    update( str ).
+  ENDMETHOD.
+ENDCLASS.`;
+    const issues = runProgram(abap);
+    expect(issues[0]?.getMessage()).to.contain("not compatible");
+  });
+
+  it("ok, boolc result into char", () => {
+    const abap = `
+CLASS lcl DEFINITION.
+  PUBLIC SECTION.
+    TYPES ty TYPE c LENGTH 4.
+    METHODS update IMPORTING foo TYPE ty.
+ENDCLASS.
+CLASS lcl IMPLEMENTATION.
+  METHOD update.
+    update( boolc( 1 = 2 ) ).
+  ENDMETHOD.
+ENDCLASS.`;
+    const issues = runProgram(abap);
+    expect(issues[0]?.getMessage()).to.equal(undefined);
+  });
+
+  it("ok, concat result into char", () => {
+    const abap = `
+CLASS lcl DEFINITION.
+  PUBLIC SECTION.
+    TYPES ty TYPE c LENGTH 4.
+    METHODS update IMPORTING foo TYPE ty.
+ENDCLASS.
+CLASS lcl IMPLEMENTATION.
+  METHOD update.
+    update( 'foo' && 'bar' ).
+  ENDMETHOD.
+ENDCLASS.`;
+    const issues = runProgram(abap);
+    expect(issues[0]?.getMessage()).to.equal(undefined);
   });
 
   it("ok another more, split", () => {
