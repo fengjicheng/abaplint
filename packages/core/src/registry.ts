@@ -243,9 +243,31 @@ export class Registry implements IRegistry {
         found = this.findOrCreate(f.getObjectName(), f.getObjectType());
       }
 
+      if (this.conf.getGlobal().errorOnDuplicateFilenames === true) {
+        this.checkDuplicateFilename(filename, found.getFiles());
+      }
       found.addFile(f);
     }
     return this;
+  }
+
+  private checkDuplicateFilename(filename: string, files: readonly IFile[]): void {
+    const basename = Registry.filenameBasename(filename);
+    if (basename === "PACKAGE.DEVC.XML") {
+      return;
+    }
+
+    for (const existingFile of files) {
+      if (Registry.filenameBasename(existingFile.getFilename()) === basename) {
+        throw new Error("Duplicate filename: " + filename + " already exists as " + existingFile.getFilename());
+      }
+    }
+  }
+
+  private static filenameBasename(filename: string): string {
+    const normalized = filename.replace(/\\/g, "/");
+    const last = normalized.split("/").pop();
+    return (last ?? normalized).toUpperCase();
   }
 
   public addFiles(files: readonly IFile[]): IRegistry {
